@@ -1,0 +1,189 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Move : MonoBehaviour
+{
+    [Header("Movement")]
+    public float movespeed;
+    public float walkSpeed;
+
+    public float dashSpeed;
+    public float dashSpeedChangeFactor;
+
+    public float groundDrag;
+
+    [Header("Ground Check")]
+    public float playerHeight;
+    public LayerMask whatIsGround;
+    bool grounded;
+
+    [Header("SlopeHandelling")]
+    public float maxSlopeAngle;
+    private RaycastHit slopeHit;
+
+    public Transform orientation;
+
+    float horizontalInput;
+    float verticalInput;
+
+    Vector3 moveDirection;
+
+    Rigidbody rb;
+
+    public MovementState state;
+
+    public enum MovementState
+    {
+        walking,
+        dashing,
+    }
+
+    [Header("Keybinds")]
+    public KeyCode dashKey = KeyCode.Space;
+
+    public bool dashing;
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+    }
+ 
+     // Update is called once per frame
+    void Update()
+    {
+        grounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.2f, whatIsGround);
+
+        MyInput();
+
+        SpeedControl();
+
+        StateHandeler();
+
+        if(state == MovementState.walking)
+        {
+            rb.drag = groundDrag;
+            desiredMoveSpeed = walkSpeed;
+        }
+        else
+        {
+            state = MovementState.dashing;
+            desiredMoveSpeed = dashSpeed;
+            speedChangeFactor = dashSpeedChangeFactor;
+            rb.drag = 0;
+        }
+
+        bool desiredMoveSpeedHasChanged = desiredMoveSpeed != lastDesiredMoveSpeed;
+        if(lastState == MovementState.dashing) keepMomentum = true;
+
+        if(desiredMoveSpeedHasChanged)
+        {
+            if(keepMomentum)
+            {
+                StopAllCoroutines();
+                StartCoroutine(SmoothlyLerpMoveSpeed());
+            }
+            else
+            {
+                StopAllCoroutines();
+                movespeed = desiredMoveSpeed;
+            }
+        }
+
+        lastDesiredMoveSpeed = desiredMoveSpeed;
+        lastState = state;
+    }
+
+    private float speedChangeFactor;
+
+    private IEnumerator SmoothlyLerpMoveSpeed()
+    {
+        float time = 0;
+        float difference = Mathf.Abs(desiredMoveSpeed - movespeed);
+        float startValue = movespeed;
+
+        float boostFactor = speedChangeFactor;
+
+        while (time < difference)
+        {
+            movespeed = Mathf.Lerp(startValue, desiredMoveSpeed, time / difference);
+
+            time += Time.deltaTime * boostFactor;
+
+            yield return null;
+        }
+    }
+
+    
+    void FixedUpdate()
+    {
+        MovePlayer();
+    }
+
+    private float desiredMoveSpeed;
+    private float lastDesiredMoveSpeed;
+    private MovementState lastState;
+    private bool keepMomentum;
+
+    void StateHandeler()
+    {
+        if(dashing)
+        {
+            state = MovementState.dashing;
+            desiredMoveSpeed = dashSpeed;
+        }
+
+        else
+        {
+            state = MovementState.walking;
+            desiredMoveSpeed = walkSpeed;
+        }
+    }
+
+    void MyInput()
+    {
+        horizontalInput = Input.GetAxisRaw("Horizontal");
+        verticalInput = Input.GetAxisRaw("Vertical");
+    }
+
+    void MovePlayer()
+    {
+        moveDirection = orientation.forward * verticalInput + orientation.right * horizontalInput;
+
+        rb.AddForce(moveDirection.normalized * movespeed * 10f, ForceMode.Force);
+
+        if(OnSlope())
+        {
+            rb.AddForce(GetSlopeMoveDirection() * movespeed * 20f, ForceMode.Force);
+        }
+    }
+
+    void SpeedControl()
+    {
+        Vector3 flatVel = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+
+        if (flatVel.magnitude > movespeed)
+        {
+            Vector3 limitedVel = flatVel.normalized * movespeed;
+            rb.velocity = new Vector3(limitedVel.x, rb.velocity.y, limitedVel.z);    
+        }
+    }
+
+    bool OnSlope()
+    {
+        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, playerHeight * 0.5f + 0.3f))
+        {
+            float angle = Vector3.Angle(Vector3.up, slopeHit.normal);
+            return angle < maxSlopeAngle && angle != 0;
+        }
+
+        return false;
+    }
+
+    private Vector3 GetSlopeMoveDirection()
+    {
+        return Vector3.ProjectOnPlane(moveDirection, slopeHit.normal).normalized;
+    }
+}
