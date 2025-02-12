@@ -13,7 +13,6 @@ public class Deathzone : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             SceneManager.LoadScene("GameOver", LoadSceneMode.Single);
-            print("hfjkh");
         }
     }
 }
